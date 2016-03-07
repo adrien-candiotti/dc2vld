@@ -4,10 +4,13 @@ import json
 # FIXME : not sure why but docker cloud only displays
 #         stderr in its logs ..
 import sys
+import logging
 
 import etcd
 import dockercloud
 from dockercloud.api.events import Events
+
+logging.basicConfig(level=logging.DEBUG)
 
 dockercloud.user = os.environ.get('DOCKERCLOUD_USER');
 dockercloud.apikey = os.environ.get('DOCKERCLOUD_APIKEY');
@@ -30,10 +33,10 @@ events = []
 containers = {}
 
 def on_open():
-    print >> sys.stderr, 'Connection inited with docker cloud api'
+    logging.info('Connection inited with docker cloud api')
 
 def on_close():
-    print >> sys.stderr, 'Shutting down'
+    logging.info('Shutting down')
 
 def get_container(message):
     uri = message.get('resource_uri').split('/')[-2]
@@ -60,7 +63,7 @@ def create_backend(backend_name):
     except etcd.EtcdKeyNotFound:
         value = '{"Type": "http"}' # FIXME : https
         etcd_client.write(key, value)
-        print >> sys.stderr, 'Created backend : %s' % key
+        logging.info('Created backend : %s' % key)
         return False
 
 def create_frontend(backend_name, ROUTE):
@@ -74,7 +77,7 @@ def create_frontend(backend_name, ROUTE):
         value = '{"Type": "http", "BackendId": "%s", "Route": "PathRegexp(`%s.*`)"}'\
                 % (backend_name, ROUTE) # FIXME : https
         etcd_client.write(key, value)
-        print >> sys.stderr, 'Created frontend : %s' % key
+        logging.info(sys.stderr, 'Created frontend : %s' % key)
         return False
 
 def add_container(container):
@@ -83,7 +86,7 @@ def add_container(container):
     ROUTE = get_envvar(container, 'ROUTE')
 
     if not ROUTE:
-        print >> sys.stderr, 'No route found for container: ' + server_name
+        logging.error('No route found for container: ' + server_name)
         return
 
     backend_name = server_name.split('-')[0]
@@ -96,12 +99,12 @@ def add_container(container):
     if PORT:
         key = '/vulcand/backends/%s/servers/%s' % (backend_name, server_name)
         value = '{"URL": "http://%s:%s"}' % (HOSTNAME, PORT) # FIXME : https
-        print >> sys.stderr, 'Added server: %s = %s on %s' % (key, value, ROUTE)
+        logging.info('Added server: %s = %s on %s' % (key, value, ROUTE))
 
         etcd_client.write(key, value)
         create_frontend(backend_name, ROUTE)
     else:
-        print >> sys.stderr, 'No port could be found for this container' + container_name
+        logging.info('No port could be found for this container' + container_name)
 
 def remove_container(container):
     server_name = container.name
@@ -110,7 +113,7 @@ def remove_container(container):
     key = '/vulcand/backends/%s/servers/%s' % (backend_name, server_name)
     try:
         etcd_client.delete(key)
-        print >> sys.stderr, 'Removed server: %s' % key
+        logging.info('Removed server: %s' % key)
     except etcd.EtcdKeyNotFound as e:
         pass
 
@@ -122,23 +125,23 @@ def on_message(message):
             if 'action' in message:
                 if message['action'] == 'update':
                     if message['state'] == 'Running':
-                        print >> sys.stderr, 'Running'
+                        logging.info('Running')
                         container = get_container(message)
                         add_container(container)
 
                     elif message['state'] == 'Stopped': 
-                        print >> sys.stderr, 'Stopped'
+                        logging.info('Stopped')
                         container = get_container(message)
                         remove_container(container)
 
                 elif message['action'] == 'delete':
                       if message['state'] == 'Terminated':
-                        print >> sys.stderr, 'Terminated'
+                        logging.info('Terminated')
                         container = get_container(message)
                         remove_container(container)
 
 def on_error(error):
-    print >> sys.stderr, 'error: ', error
+    logging.error(error)
 
 def create_listener(name, protocol, address):
     protocol = name if not protocol else protocol
