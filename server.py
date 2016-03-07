@@ -1,6 +1,10 @@
 import os
 import json
 
+# FIXME : not sure why but docker cloud only displays
+#         stderr in its logs ..
+import sys
+
 import etcd
 import dockercloud
 from dockercloud.api.events import Events
@@ -26,10 +30,10 @@ events = []
 containers = {}
 
 def on_open():
-    print 'Connection inited with docker cloud api'
+    print >> sys.stderr, 'Connection inited with docker cloud api'
 
 def on_close():
-    print 'Shutting down'
+    print >> sys.stderr, 'Shutting down'
 
 def get_container(message):
     uri = message.get('resource_uri').split('/')[-2]
@@ -56,7 +60,7 @@ def create_backend(backend_name):
     except etcd.EtcdKeyNotFound:
         value = '{"Type": "http"}' # FIXME : https
         etcd_client.write(key, value)
-        print 'Created backend : %s' % key
+        print >> sys.stderr, 'Created backend : %s' % key
         return False
 
 def create_frontend(backend_name, ROUTE):
@@ -70,7 +74,7 @@ def create_frontend(backend_name, ROUTE):
         value = '{"Type": "http", "BackendId": "%s", "Route": "PathRegexp(`%s.*`)"}'\
                 % (backend_name, ROUTE) # FIXME : https
         etcd_client.write(key, value)
-        print 'Created frontend : %s' % key
+        print >> sys.stderr, 'Created frontend : %s' % key
         return False
 
 def add_container(container):
@@ -79,7 +83,7 @@ def add_container(container):
     ROUTE = get_envvar(container, 'ROUTE')
 
     if not ROUTE:
-        print 'No route found for container: ' + server_name
+        print >> sys.stderr, 'No route found for container: ' + server_name
         return
 
     backend_name = server_name.split('-')[0]
@@ -92,12 +96,12 @@ def add_container(container):
     if PORT:
         key = '/vulcand/backends/%s/servers/%s' % (backend_name, server_name)
         value = '{"URL": "http://%s:%s"}' % (HOSTNAME, PORT) # FIXME : https
-        print 'Added server: %s = %s on %s' % (key, value, ROUTE)
+        print >> sys.stderr, 'Added server: %s = %s on %s' % (key, value, ROUTE)
 
         etcd_client.write(key, value)
         create_frontend(backend_name, ROUTE)
     else:
-        print 'No port could be found for this container' + container_name
+        print >> sys.stderr, 'No port could be found for this container' + container_name
 
 def remove_container(container):
     server_name = container.name
@@ -106,7 +110,7 @@ def remove_container(container):
     key = '/vulcand/backends/%s/servers/%s' % (backend_name, server_name)
     try:
         etcd_client.delete(key)
-        print 'Removed server: %s' % key
+        print >> sys.stderr, 'Removed server: %s' % key
     except etcd.EtcdKeyNotFound as e:
         pass
 
@@ -118,23 +122,23 @@ def on_message(message):
             if 'action' in message:
                 if message['action'] == 'update':
                     if message['state'] == 'Running':
-                        print 'Running'
+                        print >> sys.stderr, 'Running'
                         container = get_container(message)
                         add_container(container)
 
                     elif message['state'] == 'Stopped': 
-                        print 'Stopped'
+                        print >> sys.stderr, 'Stopped'
                         container = get_container(message)
                         remove_container(container)
 
                 elif message['action'] == 'delete':
                       if message['state'] == 'Terminated':
-                        print 'Terminated'
+                        print >> sys.stderr, 'Terminated'
                         container = get_container(message)
                         remove_container(container)
 
 def on_error(error):
-    print 'error: ', error
+    print >> sys.stderr, 'error: ', error
 
 def create_listener(name, protocol, address):
     protocol = name if not protocol else protocol
