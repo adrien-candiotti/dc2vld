@@ -74,7 +74,7 @@ def add_https_redirect(backend_name):
     except etcd.EtcdKeyNotFound:
         value = '{"Type": "rewrite", "Middleware":{"Regexp": "^http://(.*)$", "Replacement": "https://$1", "Redirect": true}}'
         etcd_client.write(key, value)
-        logging.warning(sys.stderr, 'Added https redirect middleware : %s' % key)
+        logging.warning('Added https redirect middleware : %s' % key)
         return False
 
 def create_frontend(backend_name, ROUTE):
@@ -88,7 +88,7 @@ def create_frontend(backend_name, ROUTE):
         value = '{"Type": "http", "BackendId": "%s", "Route": "PathRegexp(`%s.*`)"}'\
                 % (backend_name, ROUTE) # FIXME : https
         etcd_client.write(key, value)
-        logging.warning(sys.stderr, 'Created frontend : %s' % key)
+        logging.warning('Created frontend : %s' % key)
         return False
 
 def add_container(container):
@@ -156,7 +156,6 @@ def on_error(error):
     logging.error(error)
 
 def create_listener(name, protocol, address):
-    protocol = name if not protocol else protocol
     key = '/vulcand/listeners/%s' % name
     try:
         etcd_client.read(key)
@@ -170,7 +169,7 @@ event_manager.on_error(on_error)
 event_manager.on_message(on_message)
 
 # FIXME : needed?
-#create_listener('http', 'http', "0.0.0.0:80")
+create_listener('http', 'http', "0.0.0.0:80")
 #create_listener('https', 'https', "0.0.0.0:443")
 #create_listener('ws', 'ws', "0.0.0.0:8000") # FIXME websockets, wss
 
