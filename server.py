@@ -24,7 +24,7 @@ if not infra_stack:
     infra_stack = 'infra'
 
 etcd_hostname = 'etcd.' + infra_stack
-etcd_client = etcd.Client(host=etcd_hostname) # FIXME : protocol https
+etcd_client = etcd.Client(host=etcd_hostname) # FIXME : protocol https?
 
 event_manager = Events()
 
@@ -33,10 +33,10 @@ events = []
 containers = {}
 
 def on_open():
-    logging.info('Connection inited with docker cloud api')
+    logging.warning('Connection inited with docker cloud api')
 
 def on_close():
-    logging.info('Shutting down')
+    logging.warning('Shutting down')
 
 def get_container(message):
     uri = message.get('resource_uri').split('/')[-2]
@@ -63,7 +63,7 @@ def create_backend(backend_name):
     except etcd.EtcdKeyNotFound:
         value = '{"Type": "http"}' # FIXME : https
         etcd_client.write(key, value)
-        logging.info('Created backend : %s' % key)
+        logging.warning('Created backend : %s' % key)
         return False
 
 def create_frontend(backend_name, ROUTE):
@@ -77,7 +77,7 @@ def create_frontend(backend_name, ROUTE):
         value = '{"Type": "http", "BackendId": "%s", "Route": "PathRegexp(`%s.*`)"}'\
                 % (backend_name, ROUTE) # FIXME : https
         etcd_client.write(key, value)
-        logging.info(sys.stderr, 'Created frontend : %s' % key)
+        logging.warning(sys.stderr, 'Created frontend : %s' % key)
         return False
 
 def add_container(container):
@@ -86,7 +86,7 @@ def add_container(container):
     ROUTE = get_envvar(container, 'ROUTE')
 
     if not ROUTE:
-        logging.error('No route found for container: ' + server_name)
+        logging.warning('No route found for container: ' + server_name)
         return
 
     backend_name = server_name.split('-')[0]
@@ -98,13 +98,13 @@ def add_container(container):
 
     if PORT:
         key = '/vulcand/backends/%s/servers/%s' % (backend_name, server_name)
-        value = '{"URL": "http://%s:%s"}' % (HOSTNAME, PORT) # FIXME : https
-        logging.info('Added server: %s = %s on %s' % (key, value, ROUTE))
+        value = '{"URL": "http://%s:%s"}' % (HOSTNAME, PORT)
 
         etcd_client.write(key, value)
+        logging.warning('Added server: %s = %s on route %s' % (key, value, ROUTE))
         create_frontend(backend_name, ROUTE)
     else:
-        logging.info('No port could be found for this container' + container_name)
+        logging.warning('No port could be found for this container' + container_name)
 
 def remove_container(container):
     server_name = container.name
@@ -113,9 +113,9 @@ def remove_container(container):
     key = '/vulcand/backends/%s/servers/%s' % (backend_name, server_name)
     try:
         etcd_client.delete(key)
-        logging.info('Removed server: %s' % key)
+        logging.warning('Removed server: %s' % key)
     except etcd.EtcdKeyNotFound as e:
-        pass
+        logging.error(e)
 
 def on_message(message):
     message = json.loads(message)
@@ -125,18 +125,18 @@ def on_message(message):
             if 'action' in message:
                 if message['action'] == 'update':
                     if message['state'] == 'Running':
-                        logging.info('Running')
+                        logging.warning('Running')
                         container = get_container(message)
                         add_container(container)
 
                     elif message['state'] == 'Stopped': 
-                        logging.info('Stopped')
+                        logging.warning('Stopped')
                         container = get_container(message)
                         remove_container(container)
 
                 elif message['action'] == 'delete':
                       if message['state'] == 'Terminated':
-                        logging.info('Terminated')
+                        logging.warning('Terminated')
                         container = get_container(message)
                         remove_container(container)
 
@@ -147,7 +147,7 @@ def create_listener(name, protocol, address):
     protocol = name if not protocol else protocol
     key = '/vulcand/listeners/%s' % name
     try:
-        etcd_client.read(key) # FIXME https
+        etcd_client.read(key)
     except etcd.EtcdKeyNotFound:
         value = '{"Protocol":"%s", "Address":{"Network":"tcp", "Address":"%s"}}' % (protocol, address)
         etcd_client.write(key, value)
@@ -158,7 +158,7 @@ event_manager.on_error(on_error)
 event_manager.on_message(on_message)
 
 # FIXME : needed?
-#create_listener('http', 'http', "0.0.0.0:80") # FIXME https
+#create_listener('http', 'http', "0.0.0.0:80")
 #create_listener('https', 'https', "0.0.0.0:443")
 #create_listener('ws', 'ws', "0.0.0.0:8000") # FIXME websockets, wss
 
