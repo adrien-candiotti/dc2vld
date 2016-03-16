@@ -72,7 +72,7 @@ def add_https_redirect(backend_name):
         etcd_client.read(key)
         return True
     except etcd.EtcdKeyNotFound:
-        '{"Type": "rewrite", "Middleware":{"Regexp": "^http://(.*)$", "Replacement": "https://$1", "Redirect": true}}'
+        value = '{"Type": "rewrite", "Middleware":{"Regexp": "^http://(.*)$", "Replacement": "https://$1", "Redirect": true}}'
         etcd_client.write(key, value)
         logging.warning(sys.stderr, 'Added https redirect middleware : %s' % key)
         return False
