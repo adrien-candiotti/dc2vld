@@ -66,6 +66,17 @@ def create_backend(backend_name):
         logging.warning('Created backend : %s' % key)
         return False
 
+def add_https_redirect(backend_name):
+    key = '/vulcand/frontends/%s/middlewares/http2https' % backend_name
+    try:
+        etcd_client.read(key)
+        return True
+    except etcd.EtcdKeyNotFound:
+        '{"Type": "rewrite", "Middleware":{"Regexp": "^http://(.*)$", "Replacement": "https://$1", "Redirect": true}}'
+        etcd_client.write(key, value)
+        logging.warning(sys.stderr, 'Added https redirect middleware : %s' % key)
+        return False
+
 def create_frontend(backend_name, ROUTE):
     key = '/vulcand/frontends/%s/frontend' % backend_name
     try:
@@ -103,6 +114,7 @@ def add_container(container):
         etcd_client.write(key, value)
         logging.warning('Added server: %s = %s on route %s' % (key, value, ROUTE))
         create_frontend(backend_name, ROUTE)
+        add_https_redirect(backend_name)
     else:
         logging.warning('No port could be found for this container' + container_name)
 
