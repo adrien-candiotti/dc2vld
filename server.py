@@ -77,6 +77,17 @@ def add_https_redirect(backend_name):
         logging.warning('Added https redirect middleware : %s' % key)
         return False
 
+def add_rate_limiting(backend_name):
+    key = '/vulcand/frontends/%s/middlewares/rate' % backend_name
+    try:
+        etcd_client.read(key)
+        return True
+    except etcd.EtcdKeyNotFound:
+        value = '{"Type": "ratelimit", "Middleware":{"Requests": 100, "PeriodSeconds": 1, "Burst": 3, "Variable": "client.ip"}}'
+        etcd_client.write(key, value)
+        logging.warning('Added rate limiting middleware : %s' % key)
+        return False
+
 def create_frontend(backend_name, ROUTE):
     key = '/vulcand/frontends/%s/frontend' % backend_name
     try:
