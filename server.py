@@ -51,9 +51,12 @@ def get_container_hostname(container):
        hostname = '%s.%s' % (hostname, stack)
     return hostname
 
-def upsert(key, value, message):
+# -------------------------------------------------------------------------
+
+def insert(key, value, message):
     try:
         etcd_client.read(key)
+        logging.warning(key + ' already exists')
         return True
     except etcd.EtcdKeyNotFound:
         etcd_client.write(key, value)
@@ -65,27 +68,17 @@ def remove(key, message):
       etcd_client.delete(key)
       logging.warning(message)
       return True
-    except etcd.EtcdKeyNotFound:
-      logging.warning('Could not remove unexisting key: %s' % key)
+    except etcd.EtcdKeyNotFound as e:
+      logging.error(e)
       return False
+
+# -------------------------------------------------------------------------
 
 def create_backend(backend_name):
     key = '/vulcand/backends/%s/backend' % backend_name
     value = '{"Type": "http"}' # FIXME : https
 
-    return upsert(key, value, 'Created backend : %s' % key)
-
-def add_https_redirect(backend_name):
-    key = '/vulcand/frontends/%s/middlewares/http2https' % backend_name
-    value = '{"Type": "rewrite", "Middleware":{"Regexp": "^http://(.*)$", "Replacement": "https://$1", "Redirect": true}}'
-
-    return upsert(key, value, 'Added https redirect middleware : %s' % key)
-
-def add_rate_limiting(backend_name):
-    key = '/vulcand/frontends/%s/middlewares/rate' % backend_name
-    value = '{"Type": "ratelimit", "Middleware":{"Requests": 100, "PeriodSeconds": 1, "Burst": 3, "Variable": "client.ip"}}'
-
-    return upsert(key, value, 'Added rate limiting middleware : %s' % key)
+    return insert(key, value, 'Created backend : %s' % key)
 
 def create_frontend(backend_name, ROUTE):
     key = '/vulcand/frontends/%s/frontend' % backend_name
@@ -94,7 +87,36 @@ def create_frontend(backend_name, ROUTE):
     value = '{"Type": "http", "BackendId": "%s", "Route": "PathRegexp(`%s.*`)"}'\
             % (backend_name, ROUTE) # FIXME : https
  
-    return upsert(key, value, 'Created frontend : %s' % key)
+    return insert(key, value, 'Created frontend : %s' % key)
+
+def create_server(container, backend_name, server_name, ROUTE, PORT):
+    HOSTNAME = get_container_hostname(container)
+
+    key = '/vulcand/backends/%s/servers/%s' % (backend_name, server_name)
+    value = '{"URL": "http://%s:%s"}' % (HOSTNAME, PORT)
+
+    # Once the service frontend was created we can change the servers as we want
+    # That's why we don't use insert,
+    # Change the server is essential to be able to change versions
+    # or simply relaunch a container that failed
+    etcd_client.write(key, value)
+    logging.warning('Added server: %s = %s on route %s' % (key, value, ROUTE))
+
+# -------------------------------------------------------------------------
+
+def add_https_redirect(backend_name):
+    key = '/vulcand/frontends/%s/middlewares/http2https' % backend_name
+    value = '{"Type": "rewrite", "Middleware":{"Regexp": "^http://(.*)$", "Replacement": "https://$1", "Redirect": true}}'
+
+    return insert(key, value, 'Added https redirect middleware : %s' % key)
+
+def add_rate_limiting(backend_name):
+    key = '/vulcand/frontends/%s/middlewares/rate' % backend_name
+    value = '{"Type": "ratelimit", "Middleware":{"Requests": 100, "PeriodSeconds": 1, "Burst": 3, "Variable": "client.ip"}}'
+
+    return insert(key, value, 'Added rate limiting middleware : %s' % key)
+
+# -------------------------------------------------------------------------
 
 def remove_frontend(backend_name)
     key = '/vulcand/frontends/%s/frontend' % backend_name
@@ -102,49 +124,36 @@ def remove_frontend(backend_name)
 
 def add_container(container):
     server_name = container.name
+    backend_name = server_name.split('-')[0]
 
     ROUTE = get_envvar(container, 'ROUTE')
+    PORT = get_envvar(container, 'PORT')
 
     if not ROUTE:
         logging.warning('No route found for container: ' + server_name)
         return
 
-    backend_name = server_name.split('-')[0]
-    create_backend(backend_name)
-
-    HOSTNAME = get_container_hostname(container)
-    PORT = get_envvar(container, 'PORT')
-    ROUTE = get_envvar(container, 'ROUTE')
-
-    if PORT:
-        if not ROUTE:
-          logger.warning('No route could be found for this container')
-          return
-
-        key = '/vulcand/backends/%s/servers/%s' % (backend_name, server_name)
-        value = '{"URL": "http://%s:%s"}' % (HOSTNAME, PORT)
-
-        etcd_client.write(key, value)
-        logging.warning('Added server: %s = %s on route %s' % (key, value, ROUTE))
-
-        create_frontend(backend_name, ROUTE)
-        add_rate_limiting(backend_name)
-        add_https_redirect(backend_name)
-    else:
+    if not PORT:
         logging.warning('No port could be found for this container' + container_name)
+
+    create_backend(backend_name)
+    create_server(container, server_name, backend_name, ROUTE, PORT)
+
+    create_frontend(backend_name, ROUTE)
+
+    add_rate_limiting(backend_name)
+    add_https_redirect(backend_name)
 
 def remove_container(container):
     server_name = container.name
     backend_name = server_name.split('-')[0]
 
     key = '/vulcand/backends/%s/servers/%s' % (backend_name, server_name)
-    try:
-        etcd_client.delete(key)
-        logging.warning('Removed server: %s' % key)
 
-        remove_frontend(backend_name)
-    except etcd.EtcdKeyNotFound as e:
-        logging.error(e)
+    # Same thing here, we only remove the server, not the frontend or the backend
+    remove(key, 'Removed server: %s' % key)
+
+# -------------------------------------------------------------------------
 
 def on_message(message):
     message = json.loads(message)
@@ -174,11 +183,9 @@ def on_error(error):
 
 def create_listener(name, protocol, address):
     key = '/vulcand/listeners/%s' % name
-    try:
-        etcd_client.read(key)
-    except etcd.EtcdKeyNotFound:
-        value = '{"Protocol":"%s", "Address":{"Network":"tcp", "Address":"%s"}}' % (protocol, address)
-        etcd_client.write(key, value)
+    value = '{"Protocol":"%s", "Address":{"Network":"tcp", "Address":"%s"}}' % (protocol, address)
+
+    return insert(key, value, 'Added a listener: %s on %s' % (name, address))
 
 event_manager.on_open(on_open)
 event_manager.on_close(on_close)
