@@ -118,7 +118,7 @@ def add_rate_limiting(backend_name):
 
 # -------------------------------------------------------------------------
 
-def remove_frontend(backend_name)
+def remove_frontend(backend_name):
     key = '/vulcand/frontends/%s/frontend' % backend_name
     remove(key, 'remove frontend : %s' % backend_name)
 
