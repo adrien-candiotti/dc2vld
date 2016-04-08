@@ -1,7 +1,7 @@
 import os
 import json
 
-# FIXME : not sure why but docker cloud only displays
+# XXX: not sure why but docker cloud only displays
 #         stderr in its logs ..
 import sys
 import logging
@@ -24,7 +24,7 @@ if not infra_stack:
     infra_stack = 'infra'
 
 etcd_hostname = 'etcd.' + infra_stack
-etcd_client = etcd.Client(host=etcd_hostname) # FIXME : protocol https?
+etcd_client = etcd.Client(host=etcd_hostname)
 
 event_manager = Events()
 
@@ -76,16 +76,14 @@ def remove(key, message):
 
 def create_backend(backend_name):
     key = '/vulcand/backends/%s/backend' % backend_name
-    value = '{"Type": "http"}' # FIXME : https
+    value = '{"Type": "http"}'
 
     return insert(key, value, 'Created backend : %s' % key)
 
 def create_frontend(backend_name, ROUTE):
     key = '/vulcand/frontends/%s/frontend' % backend_name
-    # NOTE : Route could be passed as a raw string.
-    #        More flexible but not needed
     value = '{"Type": "http", "BackendId": "%s", "Route": "PathRegexp(`%s.*`)"}'\
-            % (backend_name, ROUTE) # FIXME : https
+            % (backend_name, ROUTE)
  
     return insert(key, value, 'Created frontend : %s' % key)
 
@@ -137,7 +135,7 @@ def add_container(container):
         logging.warning('No port could be found for this container' + container_name)
 
     create_backend(backend_name)
-    create_server(container, server_name, backend_name, ROUTE, PORT)
+    create_server(container, backend_name, server_name, ROUTE, PORT)
 
     create_frontend(backend_name, ROUTE)
 
@@ -192,9 +190,9 @@ event_manager.on_close(on_close)
 event_manager.on_error(on_error)
 event_manager.on_message(on_message)
 
-# FIXME : needed?
 create_listener('http', 'http', "0.0.0.0:80")
-#create_listener('https', 'https', "0.0.0.0:443")
-#create_listener('ws', 'ws', "0.0.0.0:8000") # FIXME websockets, wss
+
+# FIXME : https socket.io?
+#create_listener('ws', 'ws', "0.0.0.0:8000")
 
 event_manager.run_forever()
