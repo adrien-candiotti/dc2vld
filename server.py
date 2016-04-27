@@ -18,12 +18,15 @@ dockercloud.apikey = os.environ.get('DOCKERCLOUD_APIKEY');
 if not dockercloud.user or not dockercloud.apikey:
     raise Exception('DOCKERCLOUD_USER && DOCKERCLOUD_APIKEY environment variables must be specified')
 
-infra_stack = os.environ.get('STACK_ENV')
+infra_stack = os.environ.get('INFRA_STACK') or 'infra'
 
-if not infra_stack:
-    infra_stack = 'infra'
+# if the ENV environment variable is specified dc2vld will only act when containers
+# are part of a specific stack
+# example:
+#   develop
+targeted_stack = os.environ.get('STACK');
 
-etcd_hostname = 'etcd.' + infra_stack
+etcd_hostname = os.environ.get('ETCD_HOST') or 'etcd.' + infra_stack
 etcd_client = etcd.Client(host=etcd_hostname)
 
 event_manager = Events()
@@ -127,12 +130,19 @@ def add_container(container):
     ROUTE = get_envvar(container, 'ROUTE')
     PORT = get_envvar(container, 'PORT')
 
+    if targeted_stack:
+      STACK = get_envvar(container, 'DOCKERCLOUD_STACK_NAME')
+      if STACK != targeted_stack:
+        logging.warning('Container is not in targeted stack : %s (%s)' % (server_name, STACK))
+        return
+
     if not ROUTE:
-        logging.warning('No route found for container: ' + server_name)
+        logging.warning('No route found for this container: ' + server_name)
         return
 
     if not PORT:
-        logging.warning('No port could be found for this container' + container_name)
+        logging.warning('No port found for this container' + container_name)
+        return
 
     create_backend(backend_name)
     create_server(container, backend_name, server_name, ROUTE, PORT)
