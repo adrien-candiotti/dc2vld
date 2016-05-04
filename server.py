@@ -149,8 +149,11 @@ def add_container(container):
 
     create_frontend(backend_name, ROUTE)
 
-    add_rate_limiting(backend_name)
-    add_https_redirect(backend_name)
+    if os.environ.get('RATE_LIMITING') == None:
+      add_rate_limiting(backend_name)
+
+    if os.environ.get('HTTPS') == None:
+      add_https_redirect(backend_name)
 
 def remove_container(container):
     server_name = container.name
