@@ -144,9 +144,12 @@ def add_container(container):
         logging.warning('No port found for this container' + container_name)
         return
 
+    # FIXME : If no backend for this key, create backend
     create_backend(backend_name)
+
     create_server(container, backend_name, server_name, ROUTE, PORT)
 
+    # FIXME : If no backend for this key, create frontend
     create_frontend(backend_name, ROUTE)
 
     if os.environ.get('RATE_LIMITING') == None:
@@ -161,8 +164,16 @@ def remove_container(container):
 
     key = '/vulcand/backends/%s/servers/%s' % (backend_name, server_name)
 
+    if targeted_stack:
+      STACK = get_envvar(container, 'DOCKERCLOUD_STACK_NAME')
+      if STACK != targeted_stack:
+        logging.warning('Container is not in targeted stack : %s (%s)' % (server_name, STACK))
+        return
+
     # Same thing here, we only remove the server, not the frontend or the backend
     remove(key, 'Removed server: %s' % key)
+
+    # FIXME : If no server anymore, remove the frontend and backend
 
 # -------------------------------------------------------------------------
 
