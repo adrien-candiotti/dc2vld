@@ -152,11 +152,11 @@ def add_container(container):
     # FIXME : If no backend for this key, create frontend
     create_frontend(backend_name, ROUTE)
 
-    if os.environ.get('RATE_LIMITING') != None:
+    if os.environ.get('RATE_LIMITING') != None and os.environ.get('RATE_LIMITING') == 'true':
       print 'RATE_LIMITING ON'
       add_rate_limiting(backend_name)
 
-    if os.environ.get('HTTPS') != None:
+    if os.environ.get('HTTPS') != None and os.environ.get('HTTPS') == 'true':
       print 'HTTPS ON'
       add_https_redirect(backend_name)
 
