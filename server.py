@@ -83,15 +83,17 @@ def create_backend(backend_name):
 
     return insert(key, value, 'Created backend : %s' % key)
 
-def create_frontend(backend_name, ROUTE):
-    key = '/vulcand/frontends/%s/frontend' % backend_name
-    value = '{"Type": "http", "BackendId": "%s", "Route": "PathRegexp(`%s.*`)"}'\
-            % (backend_name, ROUTE)
- 
+def create_frontend(backend_name, VERSION, ROUTE):
+    key = '/vulcand/frontends/%s/%s/frontend' % ('v' + VERSION, backend_name)
+    value = '{"Type": "http", "BackendId": "%s", "Route": "PathRegexp(`/v%s%s.*`)"}'\
+            % (backend_name, VERSION, ROUTE)
+
     return insert(key, value, 'Created frontend : %s' % key)
 
-def create_server(container, backend_name, server_name, ROUTE, PORT):
+def create_server(container, backend_name, server_name, VERSION, ROUTE, PORT):
     HOSTNAME = get_container_hostname(container)
+
+    route = "/v" + VERSION + ROUTE
 
     key = '/vulcand/backends/%s/servers/%s' % (backend_name, server_name)
     value = '{"URL": "http://%s:%s"}' % (HOSTNAME, PORT)
@@ -101,7 +103,7 @@ def create_server(container, backend_name, server_name, ROUTE, PORT):
     # Change the server is essential to be able to change versions
     # or simply relaunch a container that failed
     etcd_client.write(key, value)
-    logging.warning('Added server: %s = %s on route %s' % (key, value, ROUTE))
+    logging.warning('Added server: %s = %s on route %s' % (key, value, route))
 
 # -------------------------------------------------------------------------
 
@@ -129,6 +131,7 @@ def add_container(container):
 
     ROUTE = get_envvar(container, 'ROUTE')
     PORT = get_envvar(container, 'PORT')
+    VERSION = get_envvar(container, 'VERSION')
 
     if targeted_stack:
       STACK = get_envvar(container, 'DOCKERCLOUD_STACK_NAME')
@@ -144,13 +147,17 @@ def add_container(container):
         logging.warning('No port found for this container' + container_name)
         return
 
+    if not VERSION:
+        logging.warning('No version found for this container' + container_name)
+        return
+
     # FIXME : If no backend for this key, create backend
     create_backend(backend_name)
 
-    create_server(container, backend_name, server_name, ROUTE, PORT)
+    create_server(container, backend_name, server_name, VERSION, ROUTE, PORT)
 
     # FIXME : If no backend for this key, create frontend
-    create_frontend(backend_name, ROUTE)
+    create_frontend(backend_name, VERSION, ROUTE)
 
     if os.environ.get('RATE_LIMITING') != None and os.environ.get('RATE_LIMITING') == 'true':
       print 'RATE_LIMITING ON'
